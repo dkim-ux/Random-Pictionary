@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Random Pictionary</title>
+<style>
+  :root{
+    --bg:#FFF6EC; --card:#FFFFFF; --ink:#3B2F2A; --soft:#8A7A70;
+    --accent:#F2784B; --accent2:#4BB3A6; --gold:#F4B740; --line:#EADBCB;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; justify-content:center; overflow-x:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .app{width:100%; max-width:720px; min-height:100%; padding:12px; display:flex; flex-direction:column; gap:10px}
+  .screen{display:none; flex-direction:column; gap:14px; flex:1}
+  .screen.on{display:flex}
+  .card{background:var(--card); border-radius:20px; padding:20px; box-shadow:0 4px 0 var(--line)}
+  .center{text-align:center; align-items:center}
+  h1{font-size:clamp(30px,8vw,46px); line-height:1.05}
+  h2{font-size:clamp(22px,6vw,30px)}
+  p{font-size:18px; line-height:1.4}
+  .muted{color:var(--soft)}
+  button{
+    font:inherit; font-weight:700; font-size:18px; border:none; cursor:pointer;
+    min-height:52px; min-width:52px; padding:10px 18px; border-radius:16px;
+    background:var(--accent); color:#fff; box-shadow:0 4px 0 #C95A31;
+    transition:transform .08s;
+    touch-action:manipulation;
+  }
+  button:active{transform:translateY(3px); box-shadow:0 1px 0 #C95A31}
+  button.alt{background:var(--accent2); box-shadow:0 4px 0 #36877D}
+  button.ghost{background:#fff; color:var(--ink); box-shadow:0 4px 0 var(--line); border:2px solid var(--line)}
+  button.big{font-size:22px; min-height:64px; padding:14px 30px}
+  .row{display:flex; flex-wrap:wrap; gap:10px; justify-content:center}
+  .pick button{width:56px}
+  .pick button.sel{background:var(--gold); color:var(--ink); box-shadow:0 4px 0 #C8922A}
+
+  /* doodle logo */
+  .logo{width:120px; height:120px}
+
+  /* top bar */
+  .bar{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap}
+  .pill{background:#fff; border-radius:999px; padding:8px 14px; font-weight:700; box-shadow:0 3px 0 var(--line); font-size:16px}
+  .timer{font-variant-numeric:tabular-nums; min-width:70px; text-align:center}
+  .timer.low{background:#FFE1D6; color:#C04A1E}
+  .scores{display:flex; gap:6px; flex-wrap:wrap; justify-content:center}
+  .chip{background:#fff; border-radius:12px; padding:6px 10px; font-weight:700; font-size:15px; box-shadow:0 3px 0 var(--line); display:flex; gap:6px; align-items:center}
+  .chip.drawing{background:var(--gold)}
+  .dot{width:12px;height:12px;border-radius:50%}
+
+  /* word */
+  .word{font-size:clamp(34px,10vw,56px); font-weight:800; letter-spacing:.5px; color:var(--accent)}
+  .secret{background:#fff; border:3px dashed var(--line); border-radius:18px; padding:16px; min-height:90px; display:flex; align-items:center; justify-content:center}
+
+  /* canvas */
+  .board{position:relative; background:#fff; border-radius:18px; box-shadow:0 4px 0 var(--line); overflow:hidden; flex:1; min-height:240px}
+  canvas{display:block; width:100%; height:100%; touch-action:none; cursor:crosshair}
+  .tools{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center}
+  .swatch{width:48px; height:48px; min-width:48px; min-height:48px; padding:0; border-radius:50%; box-shadow:0 3px 0 rgba(0,0,0,.15); border:4px solid #fff}
+  .swatch.sel{outline:4px solid var(--ink)}
+  .tool{min-width:52px; padding:8px 12px; font-size:16px}
+  .tool.sel{background:var(--gold); color:var(--ink); box-shadow:0 4px 0 #C8922A}
+  .peek{font-size:15px; min-height:48px}
+
+  .guessers{display:flex; flex-wrap:wrap; gap:8px; justify-content:center}
+  .label{font-weight:700; text-align:center; font-size:16px}
+
+  /* result + confetti */
+  .burst{position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:5}
+  .bit{position:absolute; top:-20px; width:12px; height:12px; border-radius:3px; animation:fall 1.4s ease-in forwards}
+  @keyframes fall{to{transform:translateY(105vh) rotate(540deg); opacity:.7}}
+  .pop{animation:pop .45s ease-out}
+  @keyframes pop{0%{transform:scale(.6)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
+  .wiggle{animation:wig .5s}
+  @keyframes wig{25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
+
+  .final li{list-style:none; display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-radius:14px; background:#FFF6EC; margin-bottom:8px; font-size:20px; font-weight:700}
+  .final li.win{background:var(--gold)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- START -->
+  <section class="screen on center" id="s-start">
+    <div class="card center" style="display:flex;flex-direction:column;gap:14px;align-items:center">
+      <svg class="logo" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="56" fill="#FFE7D6"/>
+        <rect x="26" y="30" width="62" height="50" rx="8" fill="#fff" stroke="#3B2F2A" stroke-width="4"/>
+        <path d="M36 66 Q48 40 58 60 T80 48" fill="none" stroke="#4BB3A6" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="74" cy="44" r="6" fill="#F4B740"/>
+        <g transform="rotate(35 86 86)">
+          <rect x="80" y="62" width="12" height="38" rx="3" fill="#F2784B"/>
+          <polygon points="80,100 92,100 86,112" fill="#F4D3B0"/>
+          <polygon points="84,107 88,107 86,112" fill="#3B2F2A"/>
+        </g>
+      </svg>
+      <h1>Random Pictionary</h1>
+      <p>Take turns drawing a secret word while everyone else shouts guesses — first right guess wins a point.</p>
+      <p class="muted" style="font-size:16px">On a call: the drawer shares their screen with this page.</p>
+      <div class="label">How many players?</div>
+      <div class="row pick" id="pick"></div>
+      <button class="big" id="startBtn">Start</button>
+    </div>
+  </section>
+
+  <!-- HANDOFF -->
+  <section class="screen center" id="s-hand">
+    <div class="bar" style="width:100%"><span class="pill" id="h-round"></span><div class="scores" id="h-scores"></div></div>
+    <div class="card center" style="display:flex;flex-direction:column;gap:16px;align-items:center;width:100%">
+      <h2 id="h-who"></h2>
+      <p id="h-tip" class="muted">Everyone else: look away for a second!</p>
+      <div class="secret" id="secret" style="width:100%"><span class="muted" style="font-size:18px">Word hidden</span></div>
+      <button class="big alt" id="showBtn">Show my word</button>
+      <button class="big" id="goBtn" style="display:none">Hide it &amp; start drawing</button>
+    </div>
+  </section>
+
+  <!-- DRAW -->
+  <section class="screen" id="s-draw">
+    <div class="bar">
+      <span class="pill" id="d-round"></span>
+      <span class="pill timer" id="timer">60</span>
+      <button class="ghost peek" id="peekBtn">👁 Peek</button>
+    </div>
+    <div class="scores" id="d-scores"></div>
+    <div class="board" id="board"><canvas id="cv"></canvas></div>
+    <div class="tools" id="tools"></div>
+    <div class="label">Who guessed it?</div>
+    <div class="guessers" id="guessers"></div>
+  </section>
+
+  <!-- RESULT -->
+  <section class="screen center" id="s-res">
+    <div class="bar" style="width:100%"><span class="pill" id="r-round"></span><div class="scores" id="r-scores"></div></div>
+    <div class="card center" id="r-card" style="display:flex;flex-direction:column;gap:14px;align-items:center;width:100%">
+      <h2 id="r-title"></h2>
+      <p class="muted">The word was</p>
+      <div class="word" id="r-word"></div>
+      <button class="big" id="nextBtn">Next round</button>
+    </div>
+  </section>
+
+  <!-- END -->
+  <section class="screen center" id="s-end">
+    <div class="card center" style="display:flex;flex-direction:column;gap:14px;align-items:center;width:100%">
+      <h1 id="e-title">Game over!</h1>
+      <ul class="final" id="e-list" style="width:100%;max-width:420px"></ul>
+      <button class="big" id="againBtn">Play again</button>
+    </div>
+  </section>
+</div>
+<div class="burst" id="burst"></div>
+
+<script>
+(function(){
+  const WORDS = ["cat","pizza","rocket","snowman","banana","guitar","rainbow","umbrella","octopus","bicycle",
+    "castle","volcano","sandwich","penguin","ladder","cupcake","robot","tornado","lighthouse","giraffe",
+    "toothbrush","kite","dragon","popcorn","spider","mermaid","cactus","airplane","sunflower","dinosaur",
+    "hamburger","treasure","igloo","skateboard","snail","crown","fireworks","bee","teapot","waterfall",
+    "ghost","balloon","turtle","clock","rollercoaster","pineapple","whale","tent","hot dog","moon",
+    "camera","ice cream","butterfly","bridge","fish bowl","trophy","owl","sock","train","mushroom"];
+  const COLORS = ["#3B2F2A","#F2784B","#4BB3A6","#F4B740","#5B7FD6","#D35FA0"];
+  const PCOL = ["#F2784B","#4BB3A6","#F4B740","#5B7FD6","#D35FA0","#8BC34A","#9C6ADE","#E0605B"];
+  const ROUNDS = 6, SECONDS = 60;
+
+  let players = 4, scores = [], round = 0, drawer = 0, deck = [], word = "", tLeft = 0, tick = null;
+  const $ = id => document.getElementById(id);
+  const show = id => { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on')); $(id).classList.add('on'); };
+
+  // player picker
+  for(let n=2;n<=8;n++){
+    const b=document.createElement('button'); b.textContent=n; b.className='ghost';
+    if(n===players) b.classList.add('sel');
+    b.onclick=()=>{players=n; document.querySelectorAll('#pick button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel');};
+    $('pick').appendChild(b);
+  }
+
+  function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+  function renderScores(el){
+    el.innerHTML='';
+    for(let i=0;i<players;i++){
+      const c=document.createElement('span'); c.className='chip'+(i===drawer && round>0?' drawing':'');
+      c.innerHTML='<span class="dot" style="background:'+PCOL[i]+'"></span>P'+(i+1)+': '+scores[i]+(i===drawer?' ✏️':'');
+      el.appendChild(c);
+    }
+  }
+
+  function newGame(){
+    scores=Array(players).fill(0); round=0; deck=shuffle(WORDS); nextRound();
+  }
+
+  function nextRound(){
+    if(round>=ROUNDS){ return endGame(); }
+    drawer = round % players;
+    word = deck[round];
+    round++;
+    $('h-round').textContent='Round '+round+' of '+ROUNDS;
+    $('h-who').innerHTML='<span style="color:'+PCOL[drawer]+'">Player '+(drawer+1)+'</span>, you draw!';
+    $('secret').innerHTML='<span class="muted" style="font-size:18px">Word hidden</span>';
+    $('showBtn').style.display=''; $('goBtn').style.display='none';
+    renderScores($('h-scores'));
+    show('s-hand');
+  }
+
+  $('showBtn').onclick=()=>{
+    $('secret').innerHTML='<span class="word pop">'+word+'</span>';
+    $('showBtn').style.display='none'; $('goBtn').style.display='';
+  };
+  $('goBtn').onclick=startDrawing;
+
+  // ---------- drawing ----------
+  const cv=$('cv'), ctx=cv.getContext('2d');
+  let color=COLORS[0], size=6, erasing=false, drawing=false, last=null;
+
+  function buildTools(){
+    const t=$('tools'); t.innerHTML='';
+    COLORS.forEach((c,i)=>{
+      const b=document.createElement('button'); b.className='swatch'+(i===0?' sel':''); b.style.background=c;
+      b.setAttribute('aria-label','color '+(i+1));
+      b.onclick=()=>{color=c; erasing=false; selTool(b);};
+      t.appendChild(b);
+    });
+    const thick=document.createElement('button'); thick.className='ghost tool'; thick.textContent='Thin';
+    thick.onclick=()=>{ size = size===6?14:6; thick.textContent = size===6?'Thin':'Thick'; };
+    const er=document.createElement('button'); er.className='ghost tool'; er.textContent='Eraser';
+    er.onclick=()=>{erasing=true; selTool(er);};
+    const un=document.createElement('button'); un.className='ghost tool'; un.textContent='Undo';
+    un.onclick=undo;
+    const cl=document.createElement('button'); cl.className='ghost tool'; cl.textContent='Clear';
+    cl.onclick=()=>{ saveStep(); clearBoard(); };
+    t.append(thick,er,un,cl);
+  }
+  function selTool(btn){ document.querySelectorAll('#tools .swatch,#tools .tool').forEach(x=>x.classList.remove('sel')); btn.classList.add('sel'); }
+
+  function sizeCanvas(){
+    const r=$('board').getBoundingClientRect(), d=window.devicePixelRatio||1;
+    const keep = cv.width ? cv.toDataURL() : null;
+    history=[];
+    cv.width=Math.max(1,r.width*d); cv.height=Math.max(1,r.height*d);
+    ctx.setTransform(d,0,0,d,0,0); ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,r.width,r.height);
+    if(keep && $('s-draw').classList.contains('on')){ const im=new Image(); im.onload=()=>ctx.drawImage(im,0,0,r.width,r.height); im.src=keep; }
+  }
+  let history=[];
+  function saveStep(){ history.push(ctx.getImageData(0,0,cv.width,cv.height)); if(history.length>30) history.shift(); }
+  function undo(){ const img=history.pop(); if(img){ ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.putImageData(img,0,0); ctx.restore(); } }
+  function clearBoard(){ const r=$('board').getBoundingClientRect(); ctx.fillStyle='#fff'; ctx.fillRect(0,0,r.width,r.height); }
+  function pos(e){ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+  function dotAt(p){ ctx.beginPath(); ctx.fillStyle=erasing?'#fff':color; ctx.arc(p.x,p.y,(erasing?size*3:size)/2,0,Math.PI*2); ctx.fill(); }
+  cv.addEventListener('pointerdown',e=>{ e.preventDefault(); cv.setPointerCapture(e.pointerId); saveStep(); drawing=true; last=pos(e); dotAt(last); });
+  cv.addEventListener('pointermove',e=>{
+    if(!drawing) return; e.preventDefault(); const p=pos(e);
+    ctx.strokeStyle=erasing?'#fff':color; ctx.lineWidth=erasing?size*3:size;
+    ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p;
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>cv.addEventListener(ev,()=>{drawing=false;}));
+  window.addEventListener('resize',()=>{ if($('s-draw').classList.contains('on')) sizeCanvas(); });
+
+  // peek: shows word for 2 seconds
+  $('peekBtn').onclick=()=>{
+    const b=$('peekBtn'); b.textContent=word; b.disabled=true;
+    setTimeout(()=>{ b.textContent='👁 Peek'; b.disabled=false; },2000);
+  };
+
+  function startDrawing(){
+    show('s-draw');
+    $('d-round').textContent='Round '+round+' of '+ROUNDS;
+    renderScores($('d-scores'));
+    buildTools(); color=COLORS[0]; erasing=false; size=6;
+    cv.width=0; requestAnimationFrame(sizeCanvas);
+    const g=$('guessers'); g.innerHTML='';
+    for(let i=0;i<players;i++){
+      if(i===drawer) continue;
+      const b=document.createElement('button'); b.textContent='Player '+(i+1);
+      b.style.background=PCOL[i]; b.style.boxShadow='0 4px 0 rgba(0,0,0,.2)';
+      b.onclick=()=>finishRound(i);
+      g.appendChild(b);
+    }
+    const skip=document.createElement('button'); skip.className='ghost'; skip.textContent='Nobody yet — skip';
+    skip.onclick=()=>finishRound(-1); g.appendChild(skip);
+    tLeft=SECONDS; paintTimer();
+    clearInterval(tick); tick=setInterval(()=>{ tLeft--; paintTimer(); if(tLeft<=0) finishRound(-1,true); },1000);
+  }
+  function paintTimer(){ const t=$('timer'); t.textContent=tLeft+'s'; t.classList.toggle('low',tLeft<=10); }
+
+  function finishRound(who,timeUp){
+    clearInterval(tick);
+    if(who>=0){
+      scores[who]++;
+      $('r-title').innerHTML='🎉 <span style="color:'+PCOL[who]+'">Player '+(who+1)+'</span> got it! +1';
+      confetti();
+    } else {
+      $('r-title').textContent = timeUp ? "Time's up — nice try, everyone!" : "No worries — on to the next one!";
+    }
+    $('r-word').textContent=word;
+    $('r-round').textContent='Round '+round+' of '+ROUNDS;
+    $('nextBtn').textContent = round>=ROUNDS ? 'See final scores' : 'Next round';
+    renderScores($('r-scores'));
+    show('s-res');
+    const c=$('r-card'); c.classList.remove('pop','wiggle'); void c.offsetWidth; c.classList.add(who>=0?'pop':'wiggle');
+  }
+  $('nextBtn').onclick=nextRound;
+
+  function confetti(){
+    const box=$('burst');
+    for(let i=0;i<40;i++){
+      const s=document.createElement('div'); s.className='bit';
+      s.style.left=Math.random()*100+'vw'; s.style.background=PCOL[i%PCOL.length];
+      s.style.animationDelay=(Math.random()*0.3)+'s';
+      if(i%3===0) s.style.borderRadius='50%';
+      box.appendChild(s); setTimeout(()=>s.remove(),1900);
+    }
+  }
+
+  function endGame(){
+    const best=Math.max(...scores), winners=scores.map((s,i)=>s===best?i:-1).filter(i=>i>=0);
+    $('e-title').textContent = best===0 ? "Game over!" : winners.length>1 ? "It's a tie! 🤝" : 'Player '+(winners[0]+1)+' wins! 🏆';
+    const ul=$('e-list'); ul.innerHTML='';
+    scores.map((s,i)=>({s,i})).sort((a,b)=>b.s-a.s).forEach(({s,i})=>{
+      const li=document.createElement('li'); if(s===best && best>0) li.className='win';
+      li.innerHTML='<span><span class="dot" style="display:inline-block;background:'+PCOL[i]+';margin-right:8px"></span>Player '+(i+1)+'</span><span>'+s+'</span>';
+      ul.appendChild(li);
+    });
+    round=0; show('s-end'); if(best>0) confetti();
+  }
+
+  $('startBtn').onclick=newGame;
+  $('againBtn').onclick=()=>show('s-start');
+})();
+</script>
+</body>
+</html>
